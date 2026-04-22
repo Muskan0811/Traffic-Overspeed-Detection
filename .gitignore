@@ -1,0 +1,10 @@
+venv/
+__pycache__/
+*.pyc
+output.mp4
+output_video/
+final_frames/
+denoised_frames/
+all_frames/
+extracted_frames/
+input_videos/
