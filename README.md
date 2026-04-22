@@ -34,7 +34,13 @@ streamlit run fast_app.py
 
 ## Demo
 
-(Add your screenshot here, e.g. output.png)
+<img width="1600" height="1201" alt="PHOTO-2026-04-22-22-08-11" src="https://github.com/user-attachments/assets/fe98507f-a6fe-47c3-9656-7818b647a983" />
+
+
+<img width="1600" height="1231" alt="PHOTO-2026-04-22-22-08-28" src="https://github.com/user-attachments/assets/84e83738-d8c4-4167-ad3e-34d1c7c89168" />
+
+
+
 
 ## Project Structure
 
