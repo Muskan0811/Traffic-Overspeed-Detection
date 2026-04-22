@@ -4,34 +4,38 @@ import tempfile
 from ultralytics import YOLO
 import math
 import os
+import time
 
-st.title("🚗 Fast Traffic Analyzer (Overspeed Detection)")
+st.title("Traffic Overspeed Detection System")
 
 uploaded_file = st.file_uploader("Upload video", type=["mp4"])
 
 if uploaded_file is not None:
 
-    # save uploaded file properly
+    # save uploaded file
     tfile = tempfile.NamedTemporaryFile(delete=False)
     tfile.write(uploaded_file.read())
-    tfile.close()  # 🔥 IMPORTANT
+    tfile.close()
 
-    st.success("✅ Uploaded")
+    st.success("Video uploaded")
 
-    if st.button("🚀 Run Detection"):
+    if st.button("Run Detection"):
 
         model = YOLO("yolov8n.pt")
-
         cap = cv2.VideoCapture(tfile.name)
 
-        fps = 20
+        # 🔥 tracking memory
         positions = {}
-        prev_speeds = {}
-        SPEED_LIMIT = 60
+        timestamps = {}
+        kalman = {}
+
+        # 🔥 config
+        SPEED_LIMIT = 10      # m/s (~54 km/h)
+        WINDOW_SIZE = 6
+        SCALE = 0.05
+        FRAME_SKIP = 2
 
         output_path = "output.mp4"
-
-        # 🔥 FIXED codec
         fourcc = cv2.VideoWriter_fourcc(*'avc1')
 
         out = None
@@ -46,8 +50,8 @@ if uploaded_file is not None:
 
             frame_count += 1
 
-            # 🔥 skip frames
-            if frame_count % 3 != 0:
+            # skip frames
+            if frame_count % FRAME_SKIP != 0:
                 continue
 
             frame = cv2.resize(frame, (640, 384))
@@ -71,38 +75,68 @@ if uploaded_file is not None:
                     cx = (x1 + x2) // 2
                     cy = (y1 + y2) // 2
 
+                    current_time = time.time()
+
+                    if obj_id not in positions:
+                        positions[obj_id] = []
+                        timestamps[obj_id] = []
+
+                    positions[obj_id].append((cx, cy))
+                    timestamps[obj_id].append(current_time)
+
+                    if len(positions[obj_id]) > WINDOW_SIZE:
+                        positions[obj_id].pop(0)
+                        timestamps[obj_id].pop(0)
+
                     speed = 0
 
-                    if obj_id in positions:
-                        px, py = positions[obj_id]
-                        dist = math.sqrt((cx - px)**2 + (cy - py)**2)
-                        speed = dist * fps
+                    # 🔥 multi-frame speed
+                    if len(positions[obj_id]) >= 2:
 
-                        if obj_id in prev_speeds:
-                            speed = 0.7 * prev_speeds[obj_id] + 0.3 * speed
+                        x_start, y_start = positions[obj_id][0]
+                        x_end, y_end = positions[obj_id][-1]
 
-                    positions[obj_id] = (cx, cy)
-                    prev_speeds[obj_id] = speed
+                        t_start = timestamps[obj_id][0]
+                        t_end = timestamps[obj_id][-1]
+
+                        dist_pixels = math.sqrt(
+                            (x_end - x_start) ** 2 + (y_end - y_start) ** 2
+                        )
+
+                        delta_t = t_end - t_start
+
+                        if delta_t > 0:
+                            speed = (dist_pixels * SCALE) / delta_t
+
+                            # smoothing
+                            if obj_id not in kalman:
+                                kalman[obj_id] = speed
+
+                            kalman[obj_id] = 0.8 * kalman[obj_id] + 0.2 * speed
+                            speed = kalman[obj_id]
+
+                    speed_kmh = speed * 3.6
 
                     if speed > SPEED_LIMIT:
                         color = (0, 0, 255)
-                        label = f"ID {obj_id} OVERSPEED"
+                        label = f"ID {obj_id} OVERSPEED {int(speed_kmh)} km/h"
                     else:
                         color = (0, 255, 0)
-                        label = f"{int(speed)}"
+                        label = f"ID {obj_id} {int(speed_kmh)} km/h"
 
                     cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
-                    cv2.putText(frame, label, (x1, y1 - 10),
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
 
-            # 🔥 initialize writer once
+                    cv2.putText(frame, label,
+                                (x1, y1 - 10),
+                                cv2.FONT_HERSHEY_SIMPLEX,
+                                0.5, color, 2)
+
             if out is None:
                 h, w, _ = frame.shape
                 out = cv2.VideoWriter(output_path, fourcc, 20, (w, h))
 
             out.write(frame)
 
-            # 🔥 live preview
             stframe.image(frame, channels="BGR")
 
         cap.release()
@@ -110,12 +144,11 @@ if uploaded_file is not None:
         if out is not None:
             out.release()
 
-        st.success("🎉 Done!")
+        st.success("Processing complete")
 
-        # 🔥 FIX: stream video properly
         if os.path.exists(output_path):
             with open(output_path, "rb") as f:
                 video_bytes = f.read()
             st.video(video_bytes)
         else:
-            st.error("❌ Video not created")
+            st.error("Video not created")
